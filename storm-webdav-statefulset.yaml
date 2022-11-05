@@ -1,0 +1,179 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storm-webdav
+  namespace: storm-webdav-ns
+spec:
+  ports:
+  - name: storm-webdav-https
+    port: 8443
+  - name: storm-webdav-http
+    port: 8085
+  selector:
+    app: storm-webdav
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # This name uniquely identifies the Deployment
+  name: storm-webdav
+  namespace: storm-webdav-ns
+spec: 
+  serviceName: storm-webdav
+  selector:
+    matchLabels:
+      app: storm-webdav
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        # Label is used as selector in the service.
+        app: storm-webdav
+    spec:
+      hostAliases:
+      - ip: "131.154.162.124"
+        hostnames:
+        - "iam-indigo.cr.cnaf.infn.it"
+      # Refer to the PVC created earlier
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          # Name of the PVC created earlier
+          claimName: storm-webdav-pv-claim
+      - name: application-indigo
+        configMap:
+          name: application-indigo
+          defaultMode: 0644
+      - name: storage-area
+        configMap:
+          name: storage-area
+          defaultMode: 0644
+      - name: certs-volume
+        secret:
+          secretName: tls-ssl-storm-webdav
+          items:
+          - key: public.crt
+            path: public.crt
+          - key: private.key
+            path: private.key
+          - key: ca.crt
+            path: CAs/ca.crt
+      - name: trust
+        emptyDir: {}
+      initContainers:
+      - name: storm-webdav-ca-bundle
+        image: "alpine"
+        command: [sh, -c]
+        args:
+          - cd /tmp &&
+            wget 'http://repository.egi.eu/sw/production/cas/1/current/tgz/' &&
+            mkdir tgz && mkdir certificates &&
+            for tgz in $(cat index.html | awk -F'"' '{print $2}' | grep tar.gz);
+            do wget http://repository.egi.eu/sw/production/cas/1/current/tgz/$tgz -O tgz/$tgz;
+            done && for tgz in $(ls tgz/);
+            do tar xzf tgz/$tgz --strip-components=1 -C certs/; done &&
+            for f in $(find certificates/ -type f -name '*.pem'); do cat $f >> certs/ca-bundle.crt;
+            cat $f >> certs/ca-bundle.trust.crt; done &&
+            wget 'https://crt.sh/?d=2475254782' -O certs/geant-ov-rsa-ca.crt &&
+            cat certs/geant-ov-rsa-ca.crt >> certs/ca-bundle.crt &&
+            cat certs/geant-ov-rsa-ca.crt >> certs/ca-bundle.trust.crt
+        volumeMounts:
+        - name: trust
+          mountPath: /tmp/certs
+      securityContext:
+        runAsUser: 991
+      containers:
+      - name: storm-webdav
+        # Pulls the default storm-webdav image from Docker Hub
+        image: ffornari/storm-webdav
+        command: [sh, -c]
+        args:
+        - sudo update-ca-trust 2>/dev/null &&
+          cp /tmp/.storm-webdav/certs/private.key /etc/grid-security/storm-webdav/hostkey.pem &&
+          cp /tmp/.storm-webdav/certs/public.crt /etc/grid-security/storm-webdav/hostcert.pem &&
+          /usr/bin/java ${STORM_WEBDAV_JVM_OPTS} -Djava.io.tmpdir=${STORM_WEBDAV_TMPDIR} -Dspring.profiles.active=${STORM_WEBDAV_PROFILE} -jar ${STORM_WEBDAV_JAR}
+        env:
+        - name: STORM_WEBDAV_JVM_OPTS
+          value: "-Xms8384m -Xmx8384m -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false"
+        - name: STORM_WEBDAV_USER
+          value: "storm"
+        - name: STORM_WEBDAV_PROFILE
+          value: "indigo"
+        - name: STORM_WEBDAV_SERVER_ADDRESS
+          value: "0.0.0.0"
+        - name: STORM_WEBDAV_HTTPS_PORT
+          value: "8443"
+        - name: STORM_WEBDAV_HTTP_PORT
+          value: "8085"
+        - name: STORM_WEBDAV_REQUIRE_CLIENT_CERT
+          value: "false"
+        - name: STORM_WEBDAV_CERTIFICATE_PATH
+          value: "/etc/grid-security/storm-webdav/hostcert.pem"
+        - name: STORM_WEBDAV_PRIVATE_KEY_PATH
+          value: "/etc/grid-security/storm-webdav/hostkey.pem"
+        - name: STORM_WEBDAV_TRUST_ANCHORS_DIR
+          value: "/etc/ssl/certs"
+        - name: STORM_WEBDAV_TRUST_ANCHORS_REFRESH_INTERVAL
+          value: "86400"
+        - name: STORM_WEBDAV_MAX_CONNECTIONS
+          value: "500"
+        - name: STORM_WEBDAV_MAX_QUEUE_SIZE
+          value: "900"
+        - name: STORM_WEBDAV_CONNECTOR_MAX_IDLE_TIME
+          value: "30000"
+        - name: STORM_WEBDAV_SA_CONFIG_DIR
+          value: "/etc/storm/webdav/sa.d"
+        - name: STORM_WEBDAV_JAR
+          value: "/etc/storm/webdav/storm-webdav-server.jar"
+        - name: STORM_WEBDAV_LOG
+          value: "/var/log/storm/webdav/storm-webdav-server.log"
+        - name: STORM_WEBDAV_OUT
+          value: "/var/log/storm/webdav/storm-webdav-server.out"
+        - name: STORM_WEBDAV_ERR
+          value: "/var/log/storm/webdav/storm-webdav-server.err"
+        - name: STORM_WEBDAV_TMPDIR
+          value: "/var/lib/storm-webdav/work"
+        - name: STORM_WEBDAV_LOG_CONFIGURATION
+          value: "/etc/storm/webdav/logback.xml"
+        - name: STORM_WEBDAV_ACCESS_LOG_CONFIGURATION
+          value: "/etc/storm/webdav/logback-access.xml"
+        - name: STORM_WEBDAV_VO_MAP_FILES_ENABLE
+          value: "false"
+        - name: STORM_WEBDAV_VO_MAP_FILES_CONFIG_DIR
+          value: "/etc/storm/webdav/vo-mapfiles.d"
+        - name: STORM_WEBDAV_VO_MAP_FILES_REFRESH_INTERVAL
+          value: "21600"
+        - name: STORM_WEBDAV_TPC_MAX_CONNECTIONS
+          value: "50"
+        - name: STORM_WEBDAV_TPC_VERIFY_CHECKSUM
+          value: "false"
+        - name: STORM_WEBDAV_USE_CONSCRYPT
+          value: "true"
+        - name: STORM_WEBDAV_ENABLE_HTTP2
+          value: "true"
+        ports:
+        - containerPort: 8085
+        - containerPort: 8443
+        readinessProbe:
+          tcpSocket:
+            port: 8085
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        # Mount the volume into the pod
+        volumeMounts:
+        - name: storage # must match the volume name, above
+          mountPath: "/storage"
+        - name: certs-volume
+          mountPath: /tmp/.storm-webdav/certs
+        - mountPath: /etc/pki/ca-trust/source/anchors
+          name: trust
+          readOnly: true
+        - name: application-indigo
+          mountPath: /etc/storm/webdav/config/application-indigo.yml
+          subPath: application-indigo.yml
+        - name: storage-area
+          mountPath: /etc/storm/webdav/sa.d/sa.properties
+          subPath: sa.properties
