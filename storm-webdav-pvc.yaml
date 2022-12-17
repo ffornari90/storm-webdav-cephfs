@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   # This name uniquely identifies the PVC. Will be used in deployment below.
   name: storm-webdav-pv-claim
-  namespace: storm-webdav-ns
+  namespace: webdav-ns
   labels:
     app: storm-webdav-storage-claim
 spec:

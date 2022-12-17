@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: application-indigo
-  namespace: storm-webdav-ns
+  namespace: webdav-ns
 data:
   application-indigo.yml: |
     oauth:
@@ -16,7 +16,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: storage-area
-  namespace: storm-webdav-ns
+  namespace: webdav-ns
 data:
   sa.properties: |
     # Name of the storage area
