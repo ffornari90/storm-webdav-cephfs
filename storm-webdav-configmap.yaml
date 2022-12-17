@@ -24,7 +24,7 @@ data:
 
     # Root path for the storage area. Files will be served from this path, which must exist and
     # must be accessible from the user that runs the storm webdav service
-    rootPath=/storage
+    rootPath=/indigo-dc
 
     # Comma separated list of storage area access points. 
     accessPoints=/indigo-dc

@@ -165,7 +165,7 @@ spec:
         # Mount the volume into the pod
         volumeMounts:
         - name: storage # must match the volume name, above
-          mountPath: "/storage"
+          mountPath: "/indigo-dc"
         - name: certs-volume
           mountPath: /tmp/.storm-webdav/certs
         - mountPath: /etc/pki/ca-trust/source/anchors
