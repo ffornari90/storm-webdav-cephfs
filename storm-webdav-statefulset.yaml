@@ -85,6 +85,7 @@ spec:
           mountPath: /tmp/certs
       securityContext:
         runAsUser: 991
+        fsGroup: 991
       containers:
       - name: storm-webdav
         # Pulls the default storm-webdav image from Docker Hub
